@@ -1,0 +1,112 @@
+Metadata-Version: 2.4
+Name: wav-transcriber
+Version: 0.1.0
+Summary: Local, accuracy-first WAV transcription pipeline with resumable jobs
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: PyYAML>=6.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Provides-Extra: asr
+Requires-Dist: faster-whisper>=1.0.0; extra == "asr"
+
+# wav-transcriber
+
+Accuracy-first, local Python pipeline for lossless audio validation, channel-aware preprocessing, ASR (Whisper / faster-whisper / mock), forced alignment, speaker diarization, overlapping speech detection, bilingual/code-switch labeling, quality gates, and deterministic JSON/TXT/SRT export.
+
+## Architecture & Core Pipeline
+
+```
+input.wav
+  ↓
+validate metadata and integrity (lossless inspection)
+  ↓
+preserve untouched source & calculate SHA-256 fingerprint
+  ↓
+mono/stereo channel separation & channel map resolution
+  ↓
+high-quality ASR (with vocabulary hints & language priors)
+  ↓
+word-level forced alignment & bounds validation
+  ↓
+speaker diarization (channel-based & speaker clustering)
+  ↓
+concurrent overlap detection (without flattening dialogue)
+  ↓
+bilingual and code-switch span labeling
+  ↓
+quality gates & audit checks (completed, partial, needs_review)
+  ↓
+deterministic JSON + TXT + SRT/VTT export
+```
+
+## Features
+
+- **Source File Preservation**: Untouched `.wav`, duration, sample rate, bit depth, channel count, and SHA-256 fingerprint.
+- **Stereo & Multi-Channel**: Channel-to-speaker mapping (`side`, `role`, `speaker`) and independent channel transcription.
+- **Vocabulary Biasing**: Loads `vocabulary/general.txt`, `vocabulary/names.txt`, `vocabulary/domain_terms.txt` for domain prompt hints.
+- **Bilingual & Code-Switching**: Token/script-level language span tagging (`en`, `hi`, etc.).
+- **Forced Alignment**: Clamping and monotonicity enforcement without word fabrication.
+- **Diarization & Overlap**: Multi-speaker concurrent representation with `overlap: true`.
+- **Quality Gates**: Audits empty speech, low-confidence segments, negative durations, and missing speakers.
+- **Resumability**: Per-file SHA-256 checkpoint caching and job manifests (`job_manifest.json`).
+- **Exporters**: Provenance-rich JSON, aligned human-readable TXT, SRT subtitles, and WebVTT.
+
+## Quick Start
+
+Install in editable mode:
+
+```bash
+python -m pip install -e .
+```
+
+### Single File Transcription
+
+```bash
+python transcribe.py audio.wav \
+  --config config.yaml \
+  --output output/ \
+  --language en hi \
+  --diarize \
+  --align \
+  --overlap \
+  --include-words \
+  --write-srt \
+  --resume
+```
+
+### Directory Batch Processing
+
+```bash
+python transcribe.py audio_directory/ \
+  --recursive \
+  --output output/ \
+  --workers 1 \
+  --resume
+```
+
+### Reviewing Low-Confidence Jobs
+
+```bash
+python transcribe.py audio_directory/ --review
+```
+
+## Running Tests
+
+```bash
+pytest
+```
+
+## Output Structure
+
+```
+output/
+├── job_manifest.json
+├── checkpoints/
+│   └── <sha256>.json
+└── transcripts/
+    ├── <name>.json
+    ├── <name>.txt
+    └── <name>.srt
+```
+

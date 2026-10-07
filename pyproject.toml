@@ -1,0 +1,33 @@
+[project]
+name = "wav-transcriber"
+version = "0.1.0"
+description = "Local, accuracy-first WAV transcription pipeline with resumable jobs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML>=6.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0.0"
+]
+asr = [
+  "faster-whisper>=1.0.0"
+]
+
+[project.scripts]
+wav-transcribe = "wav_transcriber.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["wav_transcriber*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+

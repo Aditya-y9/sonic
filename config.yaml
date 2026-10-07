@@ -1,0 +1,66 @@
+job:
+  output_dir: output
+  resume: true
+  recursive: false
+  workers: 1
+
+audio:
+  preserve_original: true
+  target_sample_rate_hz: 16000
+  keep_channels: true
+  normalize_loudness: false
+  denoise: optional
+  remove_long_silence: false
+  split_channels_for_stereo: false
+  channel_map:
+    "0":
+      side: left
+      role: agent
+      speaker: speaker_00
+    "1":
+      side: right
+      role: customer
+      speaker: speaker_01
+
+asr:
+  backend: mock # Options: 'mock', 'faster-whisper'
+  model: large-v3
+  task: transcribe
+  language_hints: ["en", "hi"]
+  temperature: [0.0, 0.1, 0.2]
+  beam_size: 5
+  best_of: 5
+  condition_on_previous_text: false
+  word_timestamps: true
+  vad_filter: true
+  vocabulary_files:
+    - vocabulary/general.txt
+    - vocabulary/names.txt
+    - vocabulary/domain_terms.txt
+
+alignment:
+  enabled: true
+  word_level: true
+
+diarization:
+  enabled: true
+  min_speakers: null
+  max_speakers: null
+  detect_overlap: true
+
+language:
+  detect_code_switch: true
+
+quality:
+  fail_on_empty_transcript: false
+  low_confidence_threshold: 0.6
+
+output:
+  write_txt: true
+  write_json: true
+  write_srt: true
+  write_vtt: false
+  include_words: true
+  include_confidence: true
+  include_provenance: true
+

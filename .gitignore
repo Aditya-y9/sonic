@@ -1,0 +1,20 @@
+# Audio inputs
+*.wav
+*.flac
+*.mp3
+
+# Outputs and temporary artifacts
+output/
+*.tmp
+*.cache
+
+# Transcripts
+*.json
+*.txt
+!README.md
+!config.yaml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
