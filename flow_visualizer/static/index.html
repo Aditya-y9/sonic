@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub Copilot Multi-Agent Real-Time Flow Visualizer</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              900: '#1e1b4b'
+            },
+            agent: {
+              amber: '#f59e0b',
+              green: '#10b981',
+              red: '#ef4444',
+              cyan: '#06b6d4',
+              purple: '#a855f7'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* Pitch Black Theme */
+    body, html { margin: 0; padding: 0; background: #000; color: #e5e5e5; }
+    .bg-dot-pattern {
+      background-color: #000;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0a0a0a; }
+    ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+    
+    /* Agent Node Card - Clean & Minimal */
+    .agent-node {
+      position: absolute;
+      width: 200px;
+      border-radius: 4px;
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      transition: border-color 0.2s;
+      cursor: pointer;
+      user-select: none;
+    }
+    .agent-node:hover {
+      border-color: #2a2a2a;
+    }
+    .agent-node.is-orchestrator {
+      width: 240px;
+      border-color: #1e3a8a;
+      background: #050a15;
+    }
+    
+    /* STATE: Processing (Amber) */
+    .agent-node.state-amber {
+      border-color: #f59e0b;
+    }
+    .processing-indicator {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #f59e0b;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    
+    /* STATE: Passed (Green) */
+    .agent-node.state-green {
+      border-color: #10b981;
+    }
+    
+    /* STATE: Failed (Red) */
+    .agent-node.state-red {
+      border-color: #ef4444;
+    }
+
+    /* SVG Flow Paths - Minimal */
+    .flow-edge-path {
+      fill: none;
+      stroke: #1a1a1a;
+      stroke-width: 1.5;
+      transition: stroke 0.2s;
+    }
+    .flow-edge-path.active-amber { stroke: #f59e0b; }
+    .flow-edge-path.active-green { stroke: #10b981; }
+    .flow-edge-path.active-red { stroke: #ef4444; }
+
+    .data-packet-particle {
+      fill: #f59e0b;
+      cursor: pointer;
+    }
+
+    .edge-label-pill {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      background: #0a0a0a;
+      border: 1px solid #1a1a1a;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-family: monospace;
+      color: #666;
+      cursor: pointer;
+      z-index: 15;
+      transition: all 0.2s;
+    }
+    .edge-label-pill:hover {
+      background: #1a1a1a;
+      color: #aaa;
+    }
+    .edge-label-pill.active-amber { border-color: #f59e0b; color: #f59e0b; }
+    .edge-label-pill.active-green { border-color: #10b981; color: #10b981; }
+    .edge-label-pill.active-red { border-color: #ef4444; color: #ef4444; }
+  </style>
+</head>
+<body class="bg-[#000] text-slate-100 font-sans select-none antialiased" style="display:flex;flex-direction:column;height:100dvh;overflow:hidden;">
+
+  <!-- Top Navigation Bar -->
+  <header class="h-14 border-b border-[#1a1a1a] bg-[#0a0a0a] px-4 flex items-center justify-between z-30 shrink-0">
+    
+    <!-- Logo & Repository Context -->
+    <div class="flex items-center gap-3">
+      <div class="text-sm font-semibold text-white">Multi-Agent Flow Visualizer</div>
+      <div class="text-xs text-gray-500">
+        <code class="bg-[#000] px-2 py-1 rounded text-[11px]">.github/agents/*.agent.md</code>
+        <span id="agentsCountBadge" class="ml-2 text-blue-400">(7 agents)</span>
+      </div>
+    </div>
+
+    <!-- Playback Controls -->
+    <div class="flex items-center gap-2">
+      <select id="scenarioSelect" class="bg-[#0a0a0a] text-xs text-gray-300 px-3 py-1.5 rounded border border-[#1a1a1a] focus:outline-none focus:border-[#2a2a2a] font-mono">
+        <option value="full_transcription_pipeline">1. End-to-End Success Pipeline</option>
+        <option value="quality_failure_and_recovery">2. Quality Failure & Recovery</option>
+        <option value="acoustic_failure_immediate">3. Acoustic Failure</option>
+      </select>
+
+      <button id="playBtn" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium">
+        <span id="playBtnLabel">Start</span>
+      </button>
+
+      <button id="pauseBtn" class="p-1.5 hover:bg-[#1a1a1a] text-gray-400 hover:text-gray-200 rounded text-xs" title="Pause">
+        <i data-lucide="pause" class="w-4 h-4"></i>
+      </button>
+
+      <button id="resetBtn" class="p-1.5 hover:bg-[#1a1a1a] text-gray-400 hover:text-gray-200 rounded text-xs" title="Reset">
+        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+      </button>
+
+      <div class="h-5 w-px bg-[#1a1a1a] mx-1"></div>
+
+      <div class="flex items-center gap-1 text-xs text-gray-500">
+        <button class="speed-btn px-2 py-1 rounded hover:text-white" data-speed="0.5">0.5x</button>
+        <button class="speed-btn px-2 py-1 rounded bg-[#1a1a1a] text-white" data-speed="1.0">1x</button>
+        <button class="speed-btn px-2 py-1 rounded hover:text-white" data-speed="2.0">2x</button>
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div class="flex items-center gap-3 text-xs">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+        <span class="text-gray-400">Processing</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span class="text-gray-400">Passed</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+        <span class="text-gray-400">Failed</span>
+      </div>
+    </div>
+
+  </header>
+
+  <!-- Main Canvas Container -->
+  <main style="flex:1;position:relative;overflow:hidden;display:flex;min-height:0;">
+    
+    <!-- Flow Graph Workspace -->
+    <div id="canvasViewport" style="flex:1;height:100%;position:relative;overflow:hidden;cursor:grab;background-color:#000;background-image:radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);background-size:20px 20px;">
+      
+      <!-- SVG Connecting Lines & Particles Layer -->
+      <svg id="svgGraphLayer" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;">
+        <defs>
+          <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#1a1a1a"/>
+          </marker>
+          <marker id="arrowhead-amber" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#f59e0b"/>
+          </marker>
+          <marker id="arrowhead-green" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#10b981"/>
+          </marker>
+          <marker id="arrowhead-red" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#ef4444"/>
+          </marker>
+        </defs>
+
+        <g id="edgesContainer"></g>
+        <g id="particlesContainer"></g>
+      </svg>
+
+      <!-- Node Elements Container -->
+      <div id="nodesContainer" style="position:absolute;inset:0;z-index:10;pointer-events:auto;transform-origin:0 0;"></div>
+
+      <!-- Edge Label Pills Container -->
+      <div id="edgeLabelsContainer" style="position:absolute;inset:0;z-index:10;pointer-events:auto;transform-origin:0 0;"></div>
+
+      <!-- Canvas Navigation Controls -->
+      <div style="position:absolute;bottom:20px;right:20px;display:flex;flex-direction:column;gap:4px;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:4px;padding:4px;z-index:20;">
+        <button id="zoomInBtn" class="p-2 hover:bg-[#1a1a1a] text-gray-400 hover:text-white rounded" title="Zoom In">
+          <i data-lucide="zoom-in" class="w-4 h-4"></i>
+        </button>
+        <button id="zoomOutBtn" class="p-2 hover:bg-[#1a1a1a] text-gray-400 hover:text-white rounded" title="Zoom Out">
+          <i data-lucide="zoom-out" class="w-4 h-4"></i>
+        </button>
+        <button id="fitViewBtn" class="p-2 hover:bg-[#1a1a1a] text-gray-400 hover:text-white rounded" title="Fit View">
+          <i data-lucide="maximize" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Metrics HUD -->
+      <div style="position:absolute;top:16px;left:16px;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:4px;padding:12px;z-index:20;display:flex;gap:16px;font-size:11px;">
+        <div>
+          <div class="text-gray-500 uppercase text-[9px] mb-1">Status</div>
+          <div id="hudActiveState" class="text-gray-200">Idle</div>
+        </div>
+        <div style="width:1px;background:#1a1a1a;"></div>
+        <div>
+          <div class="text-gray-500 uppercase text-[9px] mb-1">Active Task</div>
+          <div id="hudActiveTask" class="text-gray-200 font-mono" style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Ready</div>
+        </div>
+        <div style="width:1px;background:#1a1a1a;"></div>
+        <div>
+          <div class="text-gray-500 uppercase text-[9px] mb-1">Tokens</div>
+          <div id="hudTokensCount" class="text-blue-400 font-mono">0</div>
+        </div>
+        <div style="width:1px;background:#1a1a1a;"></div>
+        <div>
+          <div class="text-gray-500 uppercase text-[9px] mb-1">Time</div>
+          <div id="hudElapsedTime" class="text-gray-200 font-mono">0.0s</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Inspector Side Panel (Slide-over Drawer for clicked Node / Edge) -->
+    <aside id="inspectorDrawer" class="w-96 border-l border-slate-800 bg-[#0f172a]/95 backdrop-blur-xl flex flex-col z-30 shadow-2xl transition-all duration-300 transform translate-x-full absolute right-0 top-0 bottom-0">
+      
+      <!-- Drawer Header -->
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+        <div class="flex items-center gap-2.5">
+          <div id="inspectorIconBox" class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <i data-lucide="bot" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 id="inspectorTitle" class="font-bold text-sm text-slate-100">Agent Metadata</h3>
+            <span id="inspectorSubtitle" class="text-[11px] text-slate-400">Role & Specifications</span>
+          </div>
+        </div>
+        <button id="closeInspectorBtn" class="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Drawer Tabs -->
+      <div class="flex border-b border-slate-800 bg-slate-900/30 px-2 text-xs font-medium">
+        <button class="inspector-tab active px-3 py-2.5 text-indigo-400 border-b-2 border-indigo-500 transition" data-tab="overview">Overview</button>
+        <button class="inspector-tab px-3 py-2.5 text-slate-400 hover:text-slate-200 transition" data-tab="payloads">Live Payloads</button>
+        <button class="inspector-tab px-3 py-2.5 text-slate-400 hover:text-slate-200 transition" data-tab="logs">Logs & Traces</button>
+        <button class="inspector-tab px-3 py-2.5 text-slate-400 hover:text-slate-200 transition" data-tab="telemetry">Telemetry</button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+        
+        <!-- Tab 1: Overview & Specs -->
+        <div id="tabContentOverview" class="space-y-4">
+          <!-- Status Pill -->
+          <div class="p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Execution State</span>
+              <span id="inspectorStateBadge" class="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-slate-700 text-slate-300">IDLE</span>
+            </div>
+            <div id="inspectorActiveTaskRow" class="text-slate-300 text-xs">
+              <span class="text-slate-500 block text-[10px]">Active Subtask:</span>
+              <span id="inspectorActiveTaskText" class="font-medium text-slate-200">Waiting for trigger</span>
+            </div>
+          </div>
+
+          <!-- Basic Specs -->
+          <div class="space-y-2">
+            <div class="flex justify-between py-1.5 border-b border-slate-800">
+              <span class="text-slate-400">Agent ID</span>
+              <code id="inspectorAgentId" class="font-mono text-indigo-300">orchestrator</code>
+            </div>
+            <div class="flex justify-between py-1.5 border-b border-slate-800">
+              <span class="text-slate-400">Model Engine</span>
+              <span id="inspectorModel" class="font-mono text-slate-200 bg-slate-800 px-2 py-0.5 rounded">claude-3-7-sonnet</span>
+            </div>
+            <div class="flex justify-between py-1.5 border-b border-slate-800">
+              <span class="text-slate-400">Source File</span>
+              <span id="inspectorFile" class="font-mono text-slate-300 truncate max-w-[200px]">.github/agents/orchestrator.agent.md</span>
+            </div>
+          </div>
+
+          <!-- Allowed Tools List -->
+          <div>
+            <span class="text-slate-400 block mb-1.5 font-semibold">Registered Tools</span>
+            <div id="inspectorToolsList" class="flex flex-wrap gap-1.5"></div>
+          </div>
+
+          <!-- System Instructions / Summary -->
+          <div>
+            <span class="text-slate-400 block mb-1.5 font-semibold">Agent Markdown Instructions</span>
+            <div id="inspectorMarkdownBody" class="p-3 bg-slate-950/70 border border-slate-800/80 rounded-xl font-mono text-[11px] text-slate-300 leading-relaxed max-h-56 overflow-y-auto whitespace-pre-wrap"></div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Live Data Payloads -->
+        <div id="tabContentPayloads" class="hidden space-y-4">
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-semibold text-slate-300 flex items-center gap-1.5">
+                <i data-lucide="arrow-down-left" class="w-3.5 h-3.5 text-indigo-400"></i> Incoming Input Payload
+              </span>
+              <button class="copy-json-btn text-[10px] text-indigo-400 hover:text-indigo-300 transition" data-target="inspectorInputPayload">Copy JSON</button>
+            </div>
+            <pre id="inspectorInputPayload" class="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl font-mono text-[11px] text-emerald-300 overflow-x-auto max-h-48 whitespace-pre">{}</pre>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-semibold text-slate-300 flex items-center gap-1.5">
+                <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-emerald-400"></i> Generated Output Payload
+              </span>
+              <button class="copy-json-btn text-[10px] text-indigo-400 hover:text-indigo-300 transition" data-target="inspectorOutputPayload">Copy JSON</button>
+            </div>
+            <pre id="inspectorOutputPayload" class="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl font-mono text-[11px] text-cyan-300 overflow-x-auto max-h-48 whitespace-pre">{}</pre>
+          </div>
+        </div>
+
+        <!-- Tab 3: Execution Logs -->
+        <div id="tabContentLogs" class="hidden space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-slate-400 font-semibold">Node Activity Terminal</span>
+            <span id="logsCountBadge" class="text-[10px] text-slate-500">0 events</span>
+          </div>
+          <div id="inspectorLogsConsole" class="p-3 bg-slate-950 border border-slate-800 rounded-xl font-mono text-[11px] text-slate-300 space-y-1.5 max-h-96 overflow-y-auto">
+            <div class="text-slate-500 italic">No execution events recorded yet.</div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Telemetry -->
+        <div id="tabContentTelemetry" class="hidden space-y-3">
+          <div class="grid grid-cols-2 gap-2.5">
+            <div class="p-3 rounded-xl bg-slate-800/40 border border-slate-800 text-center">
+              <span class="text-slate-500 block text-[10px] uppercase">Execution Latency</span>
+              <span id="telemetryDuration" class="font-mono text-base font-bold text-indigo-400 mt-1 block">0 ms</span>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-800/40 border border-slate-800 text-center">
+              <span class="text-slate-500 block text-[10px] uppercase">Tokens Processed</span>
+              <span id="telemetryTokens" class="font-mono text-base font-bold text-emerald-400 mt-1 block">0</span>
+            </div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-800/40 border border-slate-800">
+            <span class="text-slate-400 block mb-1 text-[11px] font-medium">Confidence Score</span>
+            <div class="w-full bg-slate-800 rounded-full h-2">
+              <div id="telemetryConfidenceBar" class="bg-emerald-500 h-2 rounded-full transition-all" style="width: 95%"></div>
+            </div>
+            <span id="telemetryConfidenceText" class="text-right block text-[10px] text-slate-400 mt-1">0.95</span>
+          </div>
+        </div>
+
+      </div>
+
+    </aside>
+
+  </main>
+
+  <!-- Bottom Event Stream -->
+  <footer style="height:120px;border-top:1px solid #1a1a1a;background:#0a0a0a;display:flex;flex-direction:column;z-index:20;flex-shrink:0;">
+    <div style="height:28px;border-bottom:1px solid #1a1a1a;padding:0 16px;display:flex;align-items:center;justify-between;font-size:11px;">
+      <div class="flex items-center gap-2">
+        <i data-lucide="terminal" class="w-3.5 h-3.5 text-gray-500"></i>
+        <span class="text-gray-400">Event Stream</span>
+      </div>
+      <button id="clearLogsBtn" class="text-gray-500 hover:text-gray-300 text-[10px]">Clear</button>
+    </div>
+    <div id="globalLiveLogStream" style="flex:1;overflow-y:auto;padding:8px;font-family:monospace;font-size:10px;line-height:1.6;"></div>
+  </footer>
+
+  <!-- Floating Hover Tooltip HUD (dynamically placed) -->
+  <div id="hoverTooltipHud" class="fixed hidden pointer-events-none z-50 bg-[#0f172a]/95 border border-slate-700/80 rounded-xl p-3 shadow-2xl backdrop-blur-xl text-xs w-64 space-y-2 transition-opacity duration-150">
+    <div class="flex items-center justify-between">
+      <span id="hudTooltipName" class="font-bold text-slate-100">Agent Name</span>
+      <span id="hudTooltipBadge" class="px-2 py-0.5 text-[9px] font-bold uppercase rounded-full bg-slate-700 text-slate-300">IDLE</span>
+    </div>
+    <div class="text-[11px] text-slate-400" id="hudTooltipRole">Agent Role</div>
+    <div class="text-[10px] font-mono text-slate-300 bg-slate-950/70 p-1.5 rounded border border-slate-800/80">
+      <span class="text-slate-500 block">Current Task:</span>
+      <span id="hudTooltipTask" class="text-amber-300">Standby</span>
+    </div>
+    <div class="flex justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800">
+      <span>Model: <span id="hudTooltipModel" class="text-slate-200 font-mono">gpt-4o</span></span>
+      <span id="hudTooltipTokens" class="text-indigo-400 font-mono">0 tok</span>
+    </div>
+  </div>
+
+  <!-- Edge Data Transfer Modal (when clicking an edge/packet) -->
+  <div id="edgeDataModal" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#0f172a] border border-slate-800 rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
+        <div class="flex items-center gap-2">
+          <i data-lucide="send" class="w-4 h-4 text-indigo-400"></i>
+          <h3 id="edgeModalTitle" class="font-bold text-sm text-slate-100">Inter-Agent Data Payload</h3>
+        </div>
+        <button id="closeEdgeModalBtn" class="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="p-4 overflow-y-auto space-y-3 text-xs">
+        <div class="flex items-center justify-between text-slate-400 border-b border-slate-800 pb-2">
+          <div>From: <strong id="edgeModalSrc" class="text-indigo-400 font-mono">orchestrator</strong></div>
+          <div>To: <strong id="edgeModalTgt" class="text-emerald-400 font-mono">asr_engine</strong></div>
+          <div id="edgeModalTime" class="text-[10px] text-slate-500">00:00:00</div>
+        </div>
+        <pre id="edgeModalJson" class="p-3 bg-slate-950 border border-slate-800 rounded-xl font-mono text-[11px] text-emerald-300 overflow-x-auto whitespace-pre max-h-80"></pre>
+      </div>
+      <div class="p-3 border-t border-slate-800 bg-slate-900/50 flex justify-end">
+        <button id="copyEdgeJsonBtn" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium">Copy Payload</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="static/app.js"></script>
+</body>
+</html>
