@@ -1,9 +1,27 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from .config import QualityConfig
 from .schemas import Segment
+
+DOMAIN_CORRECTIONS: dict[str, str] = {
+    r"\bdiarizzation\b": "diarization",
+    r"\bdiorization\b": "diarization",
+    r"\bdiorosation\b": "diarization",
+    r"\bdiorisation\b": "diarization",
+    r"\bdiaration\b": "diarization",
+    r"\bdiorize\b": "diarize",
+    r"\breal\s*-\s*time\b": "real-time",
+}
+
+
+def apply_domain_corrections(text: str) -> str:
+    corrected = text
+    for pattern, replacement in DOMAIN_CORRECTIONS.items():
+        corrected = re.sub(pattern, replacement, corrected, flags=re.IGNORECASE)
+    return corrected
 
 
 @dataclass(slots=True)

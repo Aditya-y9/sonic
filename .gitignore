@@ -18,3 +18,7 @@ output/
 __pycache__/
 *.pyc
 .venv/
+
+# Copilot Orchestrator temporary files
+.orchestrator/
+.worktrees/

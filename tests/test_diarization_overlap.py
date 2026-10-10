@@ -1,6 +1,33 @@
 from wav_transcriber.diarization import diarize_segments
 from wav_transcriber.overlap import detect_overlap
-from wav_transcriber.schemas import Segment
+from wav_transcriber.schemas import Segment, Word
+from wav_transcriber.turn_detector import split_segments_into_turns
+
+
+def test_split_segments_into_turns() -> None:
+    words = [
+        Word(text="Hello.", start=0.0, end=0.5, confidence=0.9),
+        Word(text="How", start=0.8, end=1.0, confidence=0.9),
+        Word(text="are", start=1.0, end=1.2, confidence=0.9),
+        Word(text="you?", start=1.2, end=1.5, confidence=0.9),
+    ]
+    seg = Segment(
+        id="s1",
+        speaker=None,
+        channel=0,
+        start=0.0,
+        end=1.5,
+        text_original="Hello. How are you?",
+        words=words,
+    )
+    turns = split_segments_into_turns([seg], min_pause_seconds=0.2)
+    assert len(turns) == 2
+    assert turns[0].text_original == "Hello."
+    assert turns[0].start == 0.0
+    assert turns[0].end == 0.5
+    assert turns[1].text_original == "How are you?"
+    assert turns[1].start == 0.8
+    assert turns[1].end == 1.5
 
 
 def test_diarize_with_channel_map() -> None:

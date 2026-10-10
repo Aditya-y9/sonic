@@ -52,3 +52,13 @@ def test_inspect_wav_missing_file(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         inspect_wav(tmp_path / "non_existent.wav")
 
+
+def test_wpe_dereverberation() -> None:
+    import numpy as np
+    from wav_transcriber.audio import _apply_wpe
+
+    sine = np.sin(np.linspace(0, 100 * np.pi, 16000)).astype(np.float32)
+    cleaned = _apply_wpe(sine, taps=4, delay=2)
+    assert len(cleaned) == len(sine)
+    assert cleaned.dtype == np.float32
+

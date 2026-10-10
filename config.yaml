@@ -8,10 +8,18 @@ audio:
   preserve_original: true
   target_sample_rate_hz: 16000
   keep_channels: true
-  normalize_loudness: false
-  denoise: optional
-  remove_long_silence: false
+  normalize_loudness: true
+  target_loudness_lufs: -20.0
+  denoise: aggressive
+  denoise_strength: 0.5
+  remove_long_silence: true
+  silence_threshold_db: -40.0
+  min_silence_duration_ms: 1000.0
   split_channels_for_stereo: false
+  highpass_cutoff_hz: 80
+  lowpass_cutoff_hz: 8000
+  apply_pre_emphasis: true
+  pre_emphasis_coef: 0.97
   channel_map:
     "0":
       side: left
@@ -22,38 +30,101 @@ audio:
       role: customer
       speaker: speaker_01
 
+preprocessing:
+  level: 4                          # 0=none, 1=sanitize, 2=+filter, 3=+denoise, 4=+normalize
+  noise_reduce_prop_decrease: 0.8   # Spectral gating aggressiveness (0.0-1.0)
+  noise_reduce_stationary: false    # Non-stationary noise reduction (better for variable noise)
+  noise_reduce_time_constant_s: 2.0 # Longer = smoother noise floor estimate
+  target_sample_rate_hz: 16000
+  target_loudness_lufs: -20.0
+  highpass_cutoff_hz: 80            # Removes rumble/handling noise
+  lowpass_cutoff_hz: 8000           # Removes high-frequency noise
+  apply_pre_emphasis: true
+  pre_emphasis_coef: 0.97
+  enable_wpe: true                  # WPE dereverberation
+  enable_deepfilter: false          # DeepFilterNet 3 neural noise suppression (GPU recommended)
+  remove_long_silence: false        # False preserves exact timestamp synchronization; VAD handles silence inside ASR
+  silence_threshold_db: -40.0
+  min_silence_duration_ms: 1000.0
+
 asr:
-  backend: mock # Options: 'mock', 'faster-whisper'
+  backend: auto
   model: large-v3
+  device: auto
+  compute_type: float16
   task: transcribe
   language_hints: ["en", "hi"]
-  temperature: [0.0, 0.1, 0.2]
-  beam_size: 5
-  best_of: 5
-  condition_on_previous_text: false
+  temperature: [0.0]
+  temperature_fallback: [0.0, 0.2, 0.4, 0.6] # Dynamic temperature fallback schedule
+  beam_size: 10                     # Higher = more thorough search
+  best_of: 10                       # Candidates for sampling
+  patience: 2.5                     # Continue beam search for globally optimal path
+  length_penalty: 1.0
+  repetition_penalty: 1.05
+  no_repeat_ngram_size: 3
+  compression_ratio_threshold: 2.4
+  log_prob_threshold: -1.0
+  no_speech_threshold: 0.6
+  condition_on_previous_text: true
+  prompt_reset_on_temperature: 0.5
+  suppress_blank: true
   word_timestamps: true
-  vad_filter: true
+  vad_filter: true                  # Silero VAD for silence filtering
+  vad_parameters: {}                # Custom VAD params (optional)
   vocabulary_files:
     - vocabulary/general.txt
     - vocabulary/names.txt
     - vocabulary/domain_terms.txt
+  hallucination_silence_threshold: 2.0
+  initial_prompt: "A discussion between Steve and Katie about real-time speaker diarization, Microsoft Speech Service, and batch transcription."
+  hotwords: "Steve, Katie, diarization, diarize, real-time, Microsoft Speech Service, batch transcription"
+  use_batched_pipeline: false       # Batched inference for long files (requires GPU)
+  batch_size: 8                     # Batch size for batched pipeline
+
+ensemble:
+  enabled: true                     # Multi-engine ROVER ensemble
+  primary_model: large-v3           # High-accuracy primary
+  secondary_model: large-v3-turbo   # Fast secondary
+  primary_compute_type: float16
+  secondary_compute_type: float16
 
 alignment:
   enabled: true
   word_level: true
+  model: WAV2VEC2_ASR_BASE_960H     # CTC alignment model
+  return_char_alignments: false
+  interpolate_method: nearest
+  refinement_steps: 5
 
 diarization:
   enabled: true
   min_speakers: null
   max_speakers: null
+  auto_estimate_speakers: true      # Auto-estimate k via cosine silhouette maximization
+  max_clusters: 6
   detect_overlap: true
+  model: pyannote/speaker-diarization-3.1
+  embedding_model: pyannote/wespeaker-voxceleb-resnet34-LM
+  clustering_method: centroid
+  min_segment_duration: 0.0
+  min_speakers_per_cluster: 1
 
 language:
   detect_code_switch: true
+  use_language_detection_model: true
+  min_language_confidence: 0.7
+  context_window_size: 3
 
 quality:
   fail_on_empty_transcript: false
-  low_confidence_threshold: 0.6
+  low_confidence_threshold: 0.75
+  hallucination_detection: true
+  check_compression_ratio: true
+  max_compression_ratio: 2.4
+  repetition_detection: true
+  max_repetition_score: 0.3
+  cross_validation: true
+  ensemble_voting: false
 
 output:
   write_txt: true
@@ -63,4 +134,3 @@ output:
   include_words: true
   include_confidence: true
   include_provenance: true
-

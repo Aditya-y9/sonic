@@ -27,6 +27,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--recursive", action="store_true", help="Recurse into input directory")
     parser.add_argument("--resume", action="store_true", help="Reuse existing checkpoints")
     parser.add_argument("--review", action="store_true", help="Print files needing review")
+    parser.add_argument("--ensemble", action=argparse.BooleanOptionalAction, default=None, help="Enable/disable multi-engine ensemble")
+    parser.add_argument("--preprocess-level", type=int, default=None, choices=[0, 1, 2, 3, 4], help="Audio preprocessing level")
+    parser.add_argument("--hotwords", default=None, help="Hotword/phrase biasing for ASR")
     parser.add_argument("--reprocess", action="store_true", help="Ignore checkpoints")
     return parser.parse_args()
 
@@ -99,6 +102,12 @@ def main() -> int:
         config.output.include_words = args.include_words
     if args.write_srt:
         config.output.write_srt = True
+    if args.ensemble is not None:
+        config.ensemble.enabled = args.ensemble
+    if args.preprocess_level is not None:
+        config.preprocessing.level = args.preprocess_level
+    if args.hotwords is not None:
+        config.asr.hotwords = args.hotwords
     if args.workers is not None:
         config.job.workers = args.workers
 
